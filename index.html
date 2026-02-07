@@ -94,116 +94,74 @@ select{
   border:1px solid #cbd5e1;
 }
 @media (max-width: 768px){
-  textarea{
-    height:32vh;
-    min-height:180px;
-  }
-
-  .header{
-    padding:16px 14px;
-  }
-
-  .header h1{
-    font-size:22px;
-    line-height:1.3;
-  }
-
-  .header p{
-    font-size:14px;
-  }
+  textarea{ height:32vh; min-height:180px; }
+  .header{ padding:16px 14px; }
+  .header h1{ font-size:22px; }
 }
-
 </style>
 </head>
 
 <body>
 <div class="container">
+  <div class="header">
+    <h1>ქართული ხმა ტექსტად</h1>
+    <p>ავტომატური პუნქტუაცია • აბზაცები • უსაფრთხო</p>
+  </div>
 
-<div class="header">
-  <h1>ქართული ხმა ტექსტად</h1>
-  <p>ავტომატური პუნქტუაცია • აბზაცები • უსაფრთხო</p>
-</div>
+  <div class="main">
+    <textarea id="text" spellcheck="false" placeholder="დაიწყე ლაპარაკი…"></textarea>
 
-<div class="main">
+    <div class="indicator" id="paragraphIndicator">⚡ ახალი აბზაცი</div>
 
-<textarea id="text" spellcheck="false"
-placeholder="დაიწყე ლაპარაკი…"></textarea>
+    <div class="settings">
+      <span>პაუზა აბზაცისთვის:</span>
+      <select id="pauseSelect">
+        <option value="2000">2 წამი</option>
+        <option value="3000" selected>3 წამი</option>
+        <option value="5000">5 წამი</option>
+      </select>
+    </div>
 
-<div class="indicator" id="paragraphIndicator">⚡ ახალი აბზაცი</div>
-
-<div class="settings">
-  <span>პაუზა აბზაცისთვის:</span>
-  <select id="pauseSelect">
-    <option value="2000">2 წამი</option>
-    <option value="3000" selected>3 წამი</option>
-    <option value="5000">5 წამი</option>
-  </select>
-</div>
-
-<div class="controls">
-  <button class="start" onclick="startRec()">🎙️ დაწყება</button>
-  <button class="stop" onclick="stopRec()">🛑 შეჩერება</button>
-  <button class="copy" onclick="copyText()">📋 კოპირება</button>
-  <button class="clear" onclick="clearText()">🗑️ გასუფთავება</button>
-  <button class="word" onclick="downloadWord()">📄 Word</button>
-</div>
-<p style="font-size:13px;color:#64748b;text-align:center;margin-top:10px">
-  ℹ️ ხმის ამოცნობა მუშაობს Android Chrome-ზე და კომპიუტერზე. iPhone-ზე Apple არ იძლევა მხარდაჭერას.
-</p>
-
-</div>
+    <div class="controls">
+      <button class="start" onclick="startRec()">🎙️ დაწყება</button>
+      <button class="stop" onclick="stopRec()">🛑 შეჩერება</button>
+      <button class="copy" onclick="copyText()">📋 კოპირება</button>
+      <button class="clear" onclick="clearText()">🗑️ გასუფთავება</button>
+      <button class="word" onclick="downloadWord()">📄 Word</button>
+    </div>
+    <p style="font-size:12px;color:#64748b;text-align:center;margin-top:15px">
+      💡 iPhone-ზე გამოიყენეთ Safari. კომპიუტერზე - Chrome.
+    </p>
+  </div>
 </div>
 
 <script>
 let recognition;
 let finalText = "";
-let manuallyStopped = true; // თავიდან გაჩერებულია
+let manuallyStopped = true;
 let lastResultTime = Date.now();
+
+const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
 
 function cleanText(t){
   return t.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g,"");
 }
 
-/* ქართული გრამატიკული პუნქტუაცია */
 function smartPunctuation(text){
   text = text.trim();
   if(!text) return "";
-
-  // მძიმის ჩასმა კავშირებთან (დავამატეთ "რომ")
   text = text.replace(/\s+(მაგრამ|თუმცა|რადგან|ხოლო|რომ)\s+/gi, ", $1 ");
-
-  const questionWords = /^(რატომ|როგორ|როდის|სად|ვინ|ვის|რას|რომელი|რამდენი|ნუთუ|ხომ)\b/i;
-  const exclaimWords = /^(ძალიან|გთხოვ|აუცილებლად|ფრთხილად|ვაუ|უაუ|შესანიშნავია)\b/i;
-
+  const questionWords = /\b(რატომ|როგორ|როდის|სად|ვინ|ვის|რას|რომელი|რამდენი|ნუთუ|ხომ)\b/i;
   if(questionWords.test(text)) return text + "? ";
-  if(exclaimWords.test(text)) return text + "! ";
-
   return text + ". ";
 }
 
-function startRec(){
-  // iOS-ისთვის აუდიო ძრავის გაღვიძება
-  try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-  } catch(e) {
-    console.log("AudioContext is not supported");
-  }
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.lang = "ka-GE";
+  recognition.continuous = false; // iOS-ისთვის false უფრო სტაბილურია
+  recognition.interimResults = true;
 
-  manuallyStopped = false;
-  // ვიღებთ არსებულ ტექსტს, რომ გაგრძელდეს და არ წაიშალოს
-  finalText = text.value.trim() ? text.value.trim() + " " : "";
-  
-  try {
-    recognition.start();
-  } catch(e) {
-    // თუ უკვე ჩართულია, ჯერ ვაჩერებთ და 0.2 წამში თავიდან ვრთავთ
-    recognition.stop();
-    setTimeout(() => {
-      try { recognition.start(); } catch(err) {}
-    }, 200);
-  }
-}
   recognition.onresult = e => {
     const now = Date.now();
     const PAUSE = Number(pauseSelect.value);
@@ -211,48 +169,52 @@ function startRec(){
 
     for(let i=e.resultIndex; i<e.results.length; i++){
       let t = cleanText(e.results[i][0].transcript);
-
       if(e.results[i].isFinal){
         let gap = now - lastResultTime;
-
         if(gap >= PAUSE && finalText.trim().length > 0){
           finalText = finalText.trim() + "\n\n";
           showIndicator();
         }
-
-        const isNewParagraph = gap >= PAUSE;
-finalText += smartPunctuation(t, isNewParagraph);
-
+        finalText += smartPunctuation(t);
         lastResultTime = now;
       } else {
         interim += t;
       }
     }
-
-    // ვასუფთავებთ ზედმეტ ჰარებს რეალურ დროში
-    text.value = (finalText + interim).replace(/\s+/g, " ");
-    text.scrollTop = text.scrollHeight;
+    const textArea = document.getElementById('text');
+    textArea.value = (finalText + interim).replace(/\s+/g, " ");
+    textArea.scrollTop = textArea.scrollHeight;
   };
 
-  recognition.onend = ()=>{
-    if(!manuallyStopped){
-      try{recognition.start()}catch(err){}
+  recognition.onend = () => {
+    if (!manuallyStopped) {
+      try { recognition.start(); } catch(err) {}
     }
   };
-} else {
-  alert("გამოიყენე Google Chrome");
+  
+  recognition.onerror = e => {
+    console.log("Error:", e.error);
+    if(e.error === 'not-allowed') alert("ჩართეთ მიკროფონის ნებართვა Safari-ს პარამეტრებიდან.");
+  };
 }
 
 function startRec(){
-  try{
-    manuallyStopped = false;
-    finalText = text.value.trim() ? text.value.trim() + " " : "";
+  if(!SpeechRecognition) return alert("თქვენს ბრაუზერს არ აქვს ხმის მხარდაჭერა.");
+  
+  // Audio Context-ის გააქტიურება iOS-ისთვის
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  manuallyStopped = false;
+  finalText = document.getElementById('text').value.trim() ? document.getElementById('text').value.trim() + " " : "";
+  
+  try {
     recognition.start();
-  } catch(e){
-    alert("მიკროფონის ჩართვა ვერ მოხერხდა. ჩართეთ ნებართვა ტელეფონში.");
+  } catch(e) {
+    recognition.stop();
+    setTimeout(() => recognition.start(), 200);
   }
 }
-
 
 function stopRec(){
   manuallyStopped = true;
@@ -260,50 +222,39 @@ function stopRec(){
 }
 
 function showIndicator(){
-  paragraphIndicator.style.display="block";
-  setTimeout(()=>paragraphIndicator.style.display="none",1200);
+  const ind = document.getElementById('paragraphIndicator');
+  ind.style.display="block";
+  setTimeout(()=>ind.style.display="none",1200);
 }
 
 function copyText(){
-  navigator.clipboard.writeText(text.value.trim());
+  const val = document.getElementById('text').value;
+  navigator.clipboard.writeText(val.trim()).then(() => alert("დაკოპირდა!"));
 }
 
 function clearText(){
   if(confirm("ტექსტის სრულად წაშლა?")){
     finalText="";
-    text.value="";
+    document.getElementById('text').value="";
   }
 }
 
 function downloadWord(){
   const { Document, Packer, Paragraph, TextRun, AlignmentType } = window.docx;
-  const lines = text.value.split(/\n\n/);
-
+  const lines = document.getElementById('text').value.split(/\n\n/);
   const doc = new Document({
     sections:[{
       children: lines.filter(l=>l.trim()).map(l =>
         new Paragraph({
           alignment: AlignmentType.JUSTIFIED,
           spacing:{ after:200 },
-          children:[
-            new TextRun({
-              text:l.trim(),
-              font: "Sylfaen",
-              size: 24,
-              language:{ id:"ka-GE" },
-              noProof:true
-            })
-          ]
+          children:[ new TextRun({ text:l.trim(), font: "Sylfaen", size: 24, language:{ id:"ka-GE" } }) ]
         })
       )
     }]
   });
-
-  Packer.toBlob(doc).then(b=>{
-    saveAs(b,"qartuli_teqsti.docx");
-  });
+  Packer.toBlob(doc).then(b => saveAs(b,"qartuli_teqsti.docx"));
 }
 </script>
-
 </body>
 </html>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ქართული ხმა ტექსტად</title>
+
+<meta name="theme-color" content="#2563eb">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+  background:#f5f7ff;
+  color:#0f172a;
+}
+.container{max-width:1200px;margin:auto;padding:20px}
+.header{
+  background:#2563eb;
+  color:#fff;
+  padding:24px;
+  border-radius:18px;
+  text-align:center;
+}
+.main{
+  margin-top:20px;
+  background:#fff;
+  padding:20px;
+  border-radius:18px;
+  box-shadow:0 10px 30px rgba(0,0,0,.08);
+}
+textarea{
+  width:100%;
+  height:55vh;
+  min-height:320px;
+  padding:16px;
+  font-size:18px;
+  line-height:1.6;
+  border-radius:14px;
+  border:1px solid #cbd5e1;
+  outline:none;
+}
+textarea:focus{border-color:#2563eb}
+
+.controls{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+  justify-content:center;
+}
+.controls button{
+  padding:12px 22px;
+  border:none;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:600;
+  font-size:15px;
+  transition: opacity 0.2s;
+}
+.controls button:active { opacity: 0.7; }
+
+.start{background:#2563eb;color:#fff}
+.stop{background:#dc2626;color:#fff}
+.copy{background:#16a34a;color:#fff}
+.clear{background:#64748b;color:#fff}
+.word{background:#0f4c81;color:#fff}
+
+.settings{
+  margin-top:14px;
+  font-size:14px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:#475569;
+  justify-content:center;
+}
+.indicator{
+  margin-top:10px;
+  font-size:14px;
+  color:#2563eb;
+  display:none;
+  font-weight:bold;
+  text-align:center;
+}
+select{
+  padding:6px;
+  border-radius:6px;
+  border:1px solid #cbd5e1;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<div class="header">
+  <h1>ქართული ხმა ტექსტად</h1>
+  <p>ავტომატური პუნქტუაცია • აბზაცები • უსაფრთხო</p>
+</div>
+
+<div class="main">
+
+<textarea id="text" spellcheck="false"
+placeholder="დაიწყე ლაპარაკი…"></textarea>
+
+<div class="indicator" id="paragraphIndicator">⚡ ახალი აბზაცი</div>
+
+<div class="settings">
+  <span>პაუზა აბზაცისთვის:</span>
+  <select id="pauseSelect">
+    <option value="2000">2 წამი</option>
+    <option value="3000" selected>3 წამი</option>
+    <option value="5000">5 წამი</option>
+  </select>
+</div>
+
+<div class="controls">
+  <button class="start" onclick="startRec()">🎙️ დაწყება</button>
+  <button class="stop" onclick="stopRec()">🛑 შეჩერება</button>
+  <button class="copy" onclick="copyText()">📋 კოპირება</button>
+  <button class="clear" onclick="clearText()">🗑️ გასუფთავება</button>
+  <button class="word" onclick="downloadWord()">📄 Word</button>
+</div>
+
+</div>
+</div>
+
+<script>
+let recognition;
+let finalText = "";
+let manuallyStopped = true; // თავიდან გაჩერებულია
+let lastResultTime = Date.now();
+
+function cleanText(t){
+  return t.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g,"");
+}
+
+/* ქართული გრამატიკული პუნქტუაცია */
+function smartPunctuation(text){
+  text = text.trim();
+  if(!text) return "";
+
+  // მძიმის ჩასმა კავშირებთან (დავამატეთ "რომ")
+  text = text.replace(/\s+(მაგრამ|თუმცა|რადგან|ხოლო|რომ)\s+/gi, ", $1 ");
+
+  const questionWords = /^(რატომ|როგორ|როდის|სად|ვინ|ვის|რას|რომელი|რამდენი|ნუთუ|ხომ)\b/i;
+  const exclaimWords = /^(ძალიან|გთხოვ|აუცილებლად|ფრთხილად|ვაუ|უაუ|შესანიშნავია)\b/i;
+
+  if(questionWords.test(text)) return text + "? ";
+  if(exclaimWords.test(text)) return text + "! ";
+
+  return text + ". ";
+}
+
+if("webkitSpeechRecognition" in window){
+  recognition = new webkitSpeechRecognition();
+  recognition.lang = "ka-GE";
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onresult = e => {
+    const now = Date.now();
+    const PAUSE = Number(pauseSelect.value);
+    let interim = "";
+
+    for(let i=e.resultIndex; i<e.results.length; i++){
+      let t = cleanText(e.results[i][0].transcript);
+
+      if(e.results[i].isFinal){
+        let gap = now - lastResultTime;
+
+        if(gap >= PAUSE && finalText.trim().length > 0){
+          finalText = finalText.trim() + "\n\n";
+          showIndicator();
+        }
+
+        finalText += smartPunctuation(t);
+        lastResultTime = now;
+      } else {
+        interim += t;
+      }
+    }
+
+    // ვასუფთავებთ ზედმეტ ჰარებს რეალურ დროში
+    text.value = (finalText + interim).replace(/\s+/g, " ");
+    text.scrollTop = text.scrollHeight;
+  };
+
+  recognition.onend = ()=>{
+    if(!manuallyStopped){
+      try{recognition.start()}catch(err){}
+    }
+  };
+} else {
+  alert("გამოიყენე Google Chrome");
+}
+
+function startRec(){
+  manuallyStopped = false;
+  // თუ textarea-ში უკვე წერია რამე, მას ვიყენებთ საწყის ტექსტად
+  finalText = text.value.trim() ? text.value.trim() + " " : "";
+  recognition.start();
+}
+
+function stopRec(){
+  manuallyStopped = true;
+  recognition.stop();
+}
+
+function showIndicator(){
+  paragraphIndicator.style.display="block";
+  setTimeout(()=>paragraphIndicator.style.display="none",1200);
+}
+
+function copyText(){
+  navigator.clipboard.writeText(text.value.trim());
+}
+
+function clearText(){
+  if(confirm("ტექსტის სრულად წაშლა?")){
+    finalText="";
+    text.value="";
+  }
+}
+
+function downloadWord(){
+  const { Document, Packer, Paragraph, TextRun, AlignmentType } = window.docx;
+  const lines = text.value.split(/\n\n/);
+
+  const doc = new Document({
+    sections:[{
+      children: lines.filter(l=>l.trim()).map(l =>
+        new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          spacing:{ after:200 },
+          children:[
+            new TextRun({
+              text:l.trim(),
+              font: "Sylfaen",
+              size: 24,
+              language:{ id:"ka-GE" },
+              noProof:true
+            })
+          ]
+        })
+      )
+    }]
+  });
+
+  Packer.toBlob(doc).then(b=>{
+    saveAs(b,"qartuli_teqsti.docx");
+  });
+}
+</script>
+
+</body>
+</html>

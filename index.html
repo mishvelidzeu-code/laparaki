@@ -127,17 +127,16 @@ let finalText = "";
 let isListening = false;
 let lastResultTime = Date.now();
 
-// აიფონისთვის საჭირო ინიციალიზაცია
 async function initAndStart() {
-    // 1. იძულებითი ნებართვა მიკროფონზე
     try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
         await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-        alert("მიკროფონზე წვდომა უარყოფილია. შეამოწმეთ Safari-ს პარამეტრები.");
+        alert("მიკროფონზე წვდომა უარყოფილია.");
         return;
     }
 
-    // 2. ობიექტის შექმნა
     const SpeechRec = window.webkitSpeechRecognition || window.SpeechRecognition;
     if (!SpeechRec) {
         alert("ამ ბრაუზერს არ აქვს მხარდაჭერა.");
@@ -147,7 +146,7 @@ async function initAndStart() {
     if (!isListening) {
         recognition = new SpeechRec();
         recognition.lang = 'ka-GE';
-        recognition.continuous = false; // iPhone-ზე ასე უფრო სტაბილურია
+        recognition.continuous = false; 
         recognition.interimResults = true;
 
         recognition.onstart = () => {
@@ -165,32 +164,32 @@ async function initAndStart() {
                 let transcript = e.results[i][0].transcript;
                 if (e.results[i].isFinal) {
                     let gap = now - lastResultTime;
+                    
                     if (gap >= PAUSE && finalText.trim().length > 0) {
-                        finalText = finalText.trim() + "\n\n";
+                        if (!finalText.trim().endsWith(".") && !finalText.trim().endsWith("?")) {
+                            finalText = finalText.trim() + ". \n\n";
+                        } else {
+                            finalText = finalText.trim() + "\n\n";
+                        }
                         showIndicator();
                     }
+                    
                     finalText += smartPunctuation(transcript);
                     lastResultTime = now;
                 } else {
                     interim += transcript;
                 }
             }
-            document.getElementById('text').value = (finalText + interim).replace(/\s+/g, " ");
-            document.getElementById('text').scrollTop = document.getElementById('text').scrollHeight;
+            const displayArea = document.getElementById('text');
+            displayArea.value = (finalText + interim).replace(/\s\s+/g, ' ');
+            displayArea.scrollTop = displayArea.scrollHeight;
         };
 
         recognition.onend = () => {
             if (isListening) {
-                try { recognition.start(); } catch(err) {}
+                setTimeout(() => { try { recognition.start(); } catch(err) {} }, 100);
             } else {
                 document.getElementById('status').innerText = "ავტომატური პუნქტუაცია • აბზაცები • Word";
-            }
-        };
-
-        recognition.onerror = (e) => {
-            if(e.error !== 'no-speech') {
-                console.error(e.error);
-                if(e.error === 'not-allowed') alert("ჩართეთ მიკროფონი პარამეტრებიდან!");
             }
         };
 
@@ -206,9 +205,21 @@ function stopRec() {
 function smartPunctuation(t) {
     t = t.trim();
     if (!t) return "";
-    t = t.replace(/\s+(მაგრამ|თუმცა|რადგან|ხოლო|რომ)\s+/gi, ", $1 ");
-    const isQ = /\b(რატომ|როგორ|როდის|სად|ვინ|ვის|რას|რომელი|რამდენი|ხომ|ნუთუ)\b/i.test(t);
-    return t + (isQ ? "? " : ". ");
+
+    const conjunctions = ["რომ", "მაგრამ", "ხოლო", "თუმცა", "რადგან", "ამიტომ", "თორემ", "სანამ", "ვიდრე", "ვინაიდან", "რომელიც"];
+    conjunctions.forEach(word => {
+        const regex = new RegExp(`\\s+(${word})\\b`, "gi");
+        t = t.replace(regex, ", $1");
+    });
+
+    const questionWords = /\b(რატომ|როგორ|როდის|სად|ვინ|ვის|რას|რომელი|რამდენი|ხომ|ნუთუ|განა|საით|საიდან)\b/i;
+    const isQuestion = questionWords.test(t);
+
+    const addressWords = /\b(მეგობრებო|ხალხო|ბატონო|ქალბატონო|ბავშვებო)\b/i;
+    t = t.replace(addressWords, "$1,");
+
+    t = t.replace(/,\s*,/g, ",");
+    return t + (isQuestion ? "? " : " ");
 }
 
 function showIndicator() {

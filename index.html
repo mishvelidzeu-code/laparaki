@@ -181,16 +181,29 @@ function smartPunctuation(text){
   return text + ". ";
 }
 
-if("webkitSpeechRecognition" in window){
-  recognition = new webkitSpeechRecognition();
-  recognition.lang = "ka-GE";
-  recognition.continuous = true;
-  recognition.interimResults = true;
-recognition.onerror = function(e){
-  alert("ხმის ამოცნობის შეცდომა: " + e.error);
-};
+function startRec(){
+  // iOS-ისთვის აუდიო ძრავის გაღვიძება
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch(e) {
+    console.log("AudioContext is not supported");
+  }
 
-
+  manuallyStopped = false;
+  // ვიღებთ არსებულ ტექსტს, რომ გაგრძელდეს და არ წაიშალოს
+  finalText = text.value.trim() ? text.value.trim() + " " : "";
+  
+  try {
+    recognition.start();
+  } catch(e) {
+    // თუ უკვე ჩართულია, ჯერ ვაჩერებთ და 0.2 წამში თავიდან ვრთავთ
+    recognition.stop();
+    setTimeout(() => {
+      try { recognition.start(); } catch(err) {}
+    }, 200);
+  }
+}
   recognition.onresult = e => {
     const now = Date.now();
     const PAUSE = Number(pauseSelect.value);

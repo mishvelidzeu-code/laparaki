@@ -170,6 +170,10 @@ if("webkitSpeechRecognition" in window){
   recognition.lang = "ka-GE";
   recognition.continuous = true;
   recognition.interimResults = true;
+recognition.onerror = function(e){
+  alert("ხმის ამოცნობის შეცდომა: " + e.error);
+};
+
 
   recognition.onresult = e => {
     const now = Date.now();
@@ -211,11 +215,15 @@ finalText += smartPunctuation(t, isNewParagraph);
 }
 
 function startRec(){
-  manuallyStopped = false;
-  // თუ textarea-ში უკვე წერია რამე, მას ვიყენებთ საწყის ტექსტად
-  finalText = text.value.trim() ? text.value.trim() + " " : "";
-  recognition.start();
+  try{
+    manuallyStopped = false;
+    finalText = text.value.trim() ? text.value.trim() + " " : "";
+    recognition.start();
+  } catch(e){
+    alert("მიკროფონის ჩართვა ვერ მოხერხდა. ჩართეთ ნებართვა ტელეფონში.");
+  }
 }
+
 
 function stopRec(){
   manuallyStopped = true;

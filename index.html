@@ -187,7 +187,9 @@ if("webkitSpeechRecognition" in window){
           showIndicator();
         }
 
-        finalText += smartPunctuation(t);
+        const isNewParagraph = gap >= PAUSE;
+finalText += smartPunctuation(t, isNewParagraph);
+
         lastResultTime = now;
       } else {
         interim += t;
